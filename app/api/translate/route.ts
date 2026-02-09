@@ -3,24 +3,41 @@ import { proxyOpenAICompatibleRequest } from '../_utils/openaiProxy';
 
 // API密钥从环境变量获取，不暴露给前端
 const API_KEY = process.env.API_KEY || '';
+const GLM_API_KEY = process.env.GLM_API_KEY || '';
 const API_URL = process.env.API_URL || 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 const MODEL_NAME = "gemini-3-flash-preview";
 
 export async function POST(req: NextRequest) {
+  console.log('Translate route: Request received');
+
   try {
     // 解析请求体
     const { text, model = MODEL_NAME, apiUrl, stream = false } = await req.json();
-    
+    console.log('Translate route: Parsed request body:', { hasText: !!text, model, apiUrl, stream });
+
     // 从请求头中获取用户提供的API密钥（如果有）
     const authHeader = req.headers.get('Authorization');
     const userApiKey = authHeader ? authHeader.replace('Bearer ', '') : '';
-    
+
+    // 根据API URL判断使用哪个密钥
+    const isGLM = apiUrl?.includes('bigmodel.cn');
+    const defaultApiKey = isGLM ? GLM_API_KEY : API_KEY;
+
     // 优先使用用户API密钥，如果没有则使用环境变量中的密钥
-    const effectiveApiKey = userApiKey || API_KEY;
-    
+    const effectiveApiKey = userApiKey || defaultApiKey;
+
     // 优先使用用户提供的API URL，否则使用环境变量中的URL
     const effectiveApiUrl = apiUrl || API_URL;
-    
+
+    // 调试日志
+    console.log('Translation API debug:', {
+      isGLM,
+      hasUserApiKey: !!userApiKey,
+      hasDefaultApiKey: !!defaultApiKey,
+      effectiveApiKeyPrefix: effectiveApiKey ? effectiveApiKey.substring(0, 10) + '...' : 'none',
+      effectiveApiUrl
+    });
+
     if (!effectiveApiKey) {
       return NextResponse.json(
         { error: { message: '未提供API密钥，请在设置中配置API密钥或联系管理员配置服务器密钥' } },

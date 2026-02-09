@@ -47,7 +47,8 @@ function getHeaders(userApiKey?: string): HeadersInit {
 export async function analyzeSentence(
   sentence: string,
   userApiKey?: string,
-  userApiUrl?: string
+  userApiUrl?: string,
+  model?: string
 ): Promise<TokenData[]> {
   if (!sentence) {
     throw new Error('缺少句子');
@@ -56,11 +57,11 @@ export async function analyzeSentence(
   try {
     const apiUrl = getApiEndpoint('/analyze');
     const headers = getHeaders(userApiKey);
-    
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         prompt: `请对以下日语句子进行详细的词法分析，并以JSON数组格式返回结果。每个对象应包含以下字段："word", "pos", "furigana", "romaji"。
 
 请特别注意以下分析要求：
@@ -73,16 +74,24 @@ export async function analyzeSentence(
 
 确保输出是严格的JSON格式，不包含任何markdown或其他非JSON字符。
 
-待解析句子： "${sentence}"`, 
-        model: MODEL_NAME,
+待解析句子： "${sentence}"`,
+        model: model || MODEL_NAME,
         apiUrl: userApiUrl !== DEFAULT_API_URL ? userApiUrl : undefined
       })
     });
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('API Error (Analysis):', errorData);
-      throw new Error(`解析失败：${errorData.error?.message || response.statusText || '未知错误'}`);
+      console.error('API Error (Analysis):', {
+        status: response.status,
+        statusText: response.statusText,
+        errorData: JSON.stringify(errorData, null, 2),
+        errorCode: errorData.error?.code,
+        errorMessage: errorData.error?.message,
+        errorType: errorData.error?.type,
+        fullError: errorData.error
+      });
+      throw new Error(`解析失败：${errorData.error?.message || response.statusText || '未知错误'} (错误码: ${errorData.error?.code || response.status})`);
     }
     
     const result = await response.json();
@@ -115,7 +124,8 @@ export async function streamAnalyzeSentence(
   onChunk: (chunk: string, isDone: boolean) => void,
   onError: (error: Error) => void,
   userApiKey?: string,
-  userApiUrl?: string
+  userApiUrl?: string,
+  model?: string
 ): Promise<void> {
   if (!sentence) {
     onError(new Error('缺少句子'));
@@ -125,11 +135,11 @@ export async function streamAnalyzeSentence(
   try {
     const apiUrl = getApiEndpoint('/analyze');
     const headers = getHeaders(userApiKey);
-    
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         prompt: `请对以下日语句子进行详细的词法分析，并以JSON数组格式返回结果。每个对象应包含以下字段："word", "pos", "furigana", "romaji"。
 
 请特别注意以下分析要求：
@@ -142,8 +152,8 @@ export async function streamAnalyzeSentence(
 
 确保输出是严格的JSON格式，不包含任何markdown或其他非JSON字符。
 
-待解析句子： "${sentence}"`, 
-        model: MODEL_NAME,
+待解析句子： "${sentence}"`,
+        model: model || MODEL_NAME,
         apiUrl: userApiUrl !== DEFAULT_API_URL ? userApiUrl : undefined,
         stream: true
       })
@@ -151,8 +161,16 @@ export async function streamAnalyzeSentence(
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('API Error (Stream Analysis):', errorData);
-      onError(new Error(`流式解析失败：${errorData.error?.message || response.statusText || '未知错误'}`));
+      console.error('API Error (Stream Analysis):', {
+        status: response.status,
+        statusText: response.statusText,
+        errorData: JSON.stringify(errorData, null, 2),
+        errorCode: errorData.error?.code,
+        errorMessage: errorData.error?.message,
+        errorType: errorData.error?.type,
+        fullError: errorData.error
+      });
+      onError(new Error(`流式解析失败：${errorData.error?.message || response.statusText || '未知错误'} (错误码: ${errorData.error?.code || response.status})`));
       return;
     }
     
@@ -268,18 +286,28 @@ export async function streamTranslateText(
   onChunk: (chunk: string, isDone: boolean) => void,
   onError: (error: Error) => void,
   userApiKey?: string,
-  userApiUrl?: string
+  userApiUrl?: string,
+  model?: string
 ): Promise<void> {
   try {
     const apiUrl = getApiEndpoint('/translate');
     const headers = getHeaders(userApiKey);
-    
+
+    // 前端调试日志
+    console.log('StreamTranslate frontend debug:', {
+      userApiUrl,
+      DEFAULT_API_URL,
+      willSendApiUrl: userApiUrl !== DEFAULT_API_URL,
+      apiUrlToSend: userApiUrl !== DEFAULT_API_URL ? userApiUrl : undefined,
+      model: model || MODEL_NAME
+    });
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         text: japaneseText,
-        model: MODEL_NAME,
+        model: model || MODEL_NAME,
         apiUrl: userApiUrl !== DEFAULT_API_URL ? userApiUrl : undefined,
         stream: true
       })
@@ -287,8 +315,16 @@ export async function streamTranslateText(
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('API Error (Stream Translation):', errorData);
-      onError(new Error(`流式翻译失败：${errorData.error?.message || response.statusText || '未知错误'}`));
+      console.error('API Error (Stream Translation):', {
+        status: response.status,
+        statusText: response.statusText,
+        errorData: JSON.stringify(errorData, null, 2),
+        errorCode: errorData.error?.code,
+        errorMessage: errorData.error?.message,
+        errorType: errorData.error?.type,
+        fullError: errorData.error
+      });
+      onError(new Error(`流式翻译失败：${errorData.error?.message || response.statusText || '未知错误'} (错误码: ${errorData.error?.code || response.status})`));
       return;
     }
     
@@ -586,30 +622,39 @@ export async function streamWordDetails(
 export async function translateText(
   japaneseText: string,
   userApiKey?: string,
-  userApiUrl?: string
+  userApiUrl?: string,
+  model?: string
 ): Promise<string> {
   try {
     const apiUrl = getApiEndpoint('/translate');
     const headers = getHeaders(userApiKey);
-    
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         text: japaneseText,
-        model: MODEL_NAME,
+        model: model || MODEL_NAME,
         apiUrl: userApiUrl !== DEFAULT_API_URL ? userApiUrl : undefined
       })
     });
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('API Error (Translation):', errorData);
-      throw new Error(`翻译失败：${errorData.error?.message || response.statusText || '未知错误'}`);
+      console.error('API Error (Translation):', {
+        status: response.status,
+        statusText: response.statusText,
+        errorData: JSON.stringify(errorData, null, 2),
+        errorCode: errorData.error?.code,
+        errorMessage: errorData.error?.message,
+        errorType: errorData.error?.type,
+        fullError: errorData.error
+      });
+      throw new Error(`翻译失败：${errorData.error?.message || response.statusText || '未知错误'} (错误码: ${errorData.error?.code || response.status})`);
     }
 
     const result = await response.json();
-    
+
     if (result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.content) {
       return result.choices[0].message.content.trim();
     } else {

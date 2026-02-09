@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { extractTextFromImage, streamExtractTextFromImage } from '../services/api';
 import { getJapaneseTtsAudioUrl, speakJapanese } from '../utils/helpers';
 import { FaInfoCircle } from 'react-icons/fa';
+import { AI_MODELS, DEFAULT_MODEL, getModelIcon } from '../config/models';
 
 // 添加内联样式
 const placeholderStyle = `
@@ -21,6 +22,8 @@ interface InputSectionProps {
   ttsProvider: 'edge' | 'gemini';
   onTtsProviderChange: (provider: 'edge' | 'gemini') => void;
   isAnalyzing?: boolean;
+  selectedModel?: string;
+  onModelChange?: (model: string) => void;
 }
 
 // TTS配置选项
@@ -53,14 +56,16 @@ const TTS_STYLES = [
   { value: 'clearly', label: '清晰朗读', prompt: 'Say clearly: ' },
 ];
 
-export default function InputSection({ 
+export default function InputSection({
   onAnalyze,
   userApiKey,
   userApiUrl,
   useStream = true, // 默认启用流式输出
   ttsProvider,
   onTtsProviderChange,
-  isAnalyzing = false
+  isAnalyzing = false,
+  selectedModel = DEFAULT_MODEL,
+  onModelChange
 }: InputSectionProps) {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -70,11 +75,15 @@ export default function InputSection({
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploadStatusClass, setUploadStatusClass] = useState('');
   const [showTtsDropdown, setShowTtsDropdown] = useState(false);
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [currentModel, setCurrentModel] = useState(selectedModel);
+  const [currentModelIcon, setCurrentModelIcon] = useState(getModelIcon(selectedModel));
   const [selectedGender, setSelectedGender] = useState<'male' | 'female'>('female');
   const [selectedRate, setSelectedRate] = useState(0);
   const [selectedVoice, setSelectedVoice] = useState('Kore');
   const [selectedStyle, setSelectedStyle] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
 
   // 监听外部分析状态，同步内部loading状态
   useEffect(() => {
@@ -83,6 +92,9 @@ export default function InputSection({
 
   // 从本地存储加载TTS设置
   useEffect(() => {
+    // 只在客户端执行
+    if (typeof window === 'undefined') return;
+    
     const storedGender = (localStorage.getItem('ttsGender') || 'female') as 'male' | 'female';
     const storedRate = parseInt(localStorage.getItem('ttsRate') || '0');
     const storedVoice = localStorage.getItem('ttsVoice') || 'Kore';
@@ -93,22 +105,37 @@ export default function InputSection({
     setSelectedStyle(storedStyle);
   }, []);
 
+  // 从本地存储加载模型选择
+  useEffect(() => {
+    // 只在客户端执行
+    if (typeof window === 'undefined') return;
+    
+    const storedModel = localStorage.getItem('selectedModel');
+    if (storedModel && storedModel !== currentModel) {
+      setCurrentModel(storedModel);
+      setCurrentModelIcon(getModelIcon(storedModel));
+    }
+  }, []);
+
   // 点击外部关闭下拉菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowTtsDropdown(false);
       }
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setShowModelDropdown(false);
+      }
     };
 
-    if (showTtsDropdown) {
+    if (showTtsDropdown || showModelDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showTtsDropdown]);
+  }, [showTtsDropdown, showModelDropdown]);
 
   const handleAnalyze = () => {
     if (!inputText.trim()) {
@@ -156,22 +183,49 @@ export default function InputSection({
 
   const handleVoiceChange = (voice: string) => {
     setSelectedVoice(voice);
-    localStorage.setItem('ttsVoice', voice);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ttsVoice', voice);
+    }
   };
 
   const handleGenderChange = (gender: 'male' | 'female') => {
     setSelectedGender(gender);
-    localStorage.setItem('ttsGender', gender);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ttsGender', gender);
+    }
   };
 
   const handleRateChange = (rate: number) => {
     setSelectedRate(rate);
-    localStorage.setItem('ttsRate', rate.toString());
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ttsRate', rate.toString());
+    }
   };
 
   const handleStyleChange = (style: string) => {
     setSelectedStyle(style);
-    localStorage.setItem('ttsStyle', style);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ttsStyle', style);
+    }
+  };
+
+  // 处理模型选择
+  const handleModelChange = (model: string) => {
+    const newIcon = getModelIcon(model);
+    // 先关闭下拉菜单
+    setShowModelDropdown(false);
+    // 然后更新模型
+    setCurrentModel(model);
+    // 更新icon
+    setCurrentModelIcon(newIcon);
+    // 保存到本地存储
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('selectedModel', model);
+    }
+    // 通知父组件
+    if (onModelChange) {
+      onModelChange(model);
+    }
   };
 
   // 根据文本长度估算合成时间
@@ -350,9 +404,53 @@ export default function InputSection({
         
         {/* 底部渐变遮罩，防止文字进入按钮区域 */}
         <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-white dark:from-gray-800 via-white/80 dark:via-gray-800/80 to-transparent pointer-events-none rounded-b-3xl"></div>
-        
+
         {/* 左侧工具按钮区域 */}
         <div className="absolute left-4 bottom-4 flex items-center gap-1 z-10">
+          {/* 模型选择按钮 */}
+          <div className="relative mr-1" ref={modelDropdownRef}>
+            <button
+              key={currentModelIcon}
+              className="material-icon-button material-ripple w-10 h-10 text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-all duration-200"
+              onClick={() => setShowModelDropdown(!showModelDropdown)}
+              title={`选择 AI 模型: ${AI_MODELS.find(m => m.value === currentModel)?.label}`}
+            >
+              <i className={`fas ${currentModelIcon} text-lg`}></i>
+            </button>
+
+            {showModelDropdown && (
+              <div className="absolute bottom-12 left-0 mb-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 z-50">
+                <div className="p-3">
+                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">选择 AI 模型</h4>
+                  {AI_MODELS.map((model) => (
+                    <button
+                      key={model.value}
+                      onClick={() => handleModelChange(model.value)}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 mb-2 ${
+                        currentModel === model.value
+                          ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-2">
+                          <i className={`fas ${model.icon} text-lg mt-0.5 ${currentModel === model.value ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400 dark:text-gray-500'}`}></i>
+                          <div>
+                            <div className="font-medium">{model.label}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{model.desc}</div>
+                          </div>
+                        </div>
+                        {currentModel === model.value && (
+                          <i className="fas fa-check text-purple-600 dark:text-purple-400 mt-1"></i>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* 上传图片按钮 */}
           <button
             id="uploadImageButton"
@@ -372,18 +470,18 @@ export default function InputSection({
               className="material-icon-button material-ripple w-10 h-10 text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-l-full transition-all duration-200"
               onClick={handleSpeak}
               disabled={!inputText.trim() || isLoading || isSpeaking}
-              title={inputText.trim() ? 
-                (ttsProvider === 'edge' ? 
-                  `朗读文本 (Edge TTS，预计需要 ${getEstimatedTime(inputText)})` : 
+              title={inputText.trim() ?
+                (ttsProvider === 'edge' ?
+                  `朗读文本 (Edge TTS，预计需要 ${getEstimatedTime(inputText)})` :
                   `朗读文本 (Gemini TTS，预计需要 ${getEstimatedTime(inputText)})`
-                ) : 
+                ) :
                 '请先输入文本'
               }
             >
               <i className="fas fa-volume-up text-lg"></i>
               {isSpeaking && <div className="loading-spinner ml-1" style={{ width: '12px', height: '12px' }}></div>}
             </button>
-            
+
             <button
               className="material-icon-button material-ripple w-6 h-10 text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-r-full border-l border-gray-300 dark:border-gray-600 transition-all duration-200"
               onClick={() => setShowTtsDropdown(!showTtsDropdown)}
@@ -568,4 +666,4 @@ export default function InputSection({
       )}
     </div>
   );
-} 
+}

@@ -10,6 +10,7 @@ import LoginModal from './components/LoginModal';
 import AIChat from './components/AIChat';
 import { analyzeSentence, TokenData, DEFAULT_API_URL, streamAnalyzeSentence } from './services/api';
 import { FaExclamationTriangle, FaExclamationCircle } from 'react-icons/fa';
+import { DEFAULT_MODEL, getModelApiUrl, getModelName } from './config/models';
 
 export default function Home() {
   const [currentSentence, setCurrentSentence] = useState('');
@@ -27,6 +28,7 @@ export default function Home() {
   const [userApiKey, setUserApiKey] = useState('');
   const [userApiUrl, setUserApiUrl] = useState(DEFAULT_API_URL);
   const [ttsProvider, setTtsProvider] = useState<'edge' | 'gemini'>('edge');
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   
   // 密码验证相关状态
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -68,10 +70,12 @@ export default function Home() {
     const storedApiUrl = localStorage.getItem('userApiUrl') || DEFAULT_API_URL;
     const storedUseStream = localStorage.getItem('useStream');
     const storedTtsProvider = (localStorage.getItem('ttsProvider') || 'edge') as 'edge' | 'gemini';
+    const storedModel = localStorage.getItem('selectedModel') || DEFAULT_MODEL;
     
     setUserApiKey(storedApiKey);
     setUserApiUrl(storedApiUrl);
     setTtsProvider(storedTtsProvider);
+    setSelectedModel(storedModel);
     
     // 只有当明确设置了值时才更新，否则保持默认值
     if (storedUseStream !== null) {
@@ -88,6 +92,12 @@ export default function Home() {
     setUserApiKey(apiKey);
     setUserApiUrl(apiUrl);
     setUseStream(streamEnabled);
+  };
+
+  // 处理模型选择变化
+  const handleModelChange = (model: string) => {
+    setSelectedModel(model);
+    localStorage.setItem('selectedModel', model);
   };
 
   const handleTtsProviderChange = (provider: 'edge' | 'gemini') => {
@@ -245,7 +255,11 @@ export default function Home() {
     setStreamContent('');
     setAnalyzedTokens([]);
     setIsJsonParseError(false);
-    
+
+    // 根据选择的模型获取API配置（从配置文件读取，无需修改代码）
+    const effectiveApiUrl = getModelApiUrl(selectedModel);
+    const effectiveModel = getModelName(selectedModel);
+
     try {
       if (useStream) {
         // 使用流式API进行分析
@@ -272,11 +286,12 @@ export default function Home() {
             setIsAnalyzing(false);
           },
           userApiKey,
-          userApiUrl
+          effectiveApiUrl,
+          effectiveModel
         );
       } else {
         // 使用传统API进行分析
-        const tokens = await analyzeSentence(text, userApiKey, userApiUrl);
+        const tokens = await analyzeSentence(text, userApiKey, effectiveApiUrl, effectiveModel);
         setAnalyzedTokens(tokens);
         setIsAnalyzing(false);
       }
@@ -336,6 +351,8 @@ export default function Home() {
               ttsProvider={ttsProvider}
               onTtsProviderChange={handleTtsProviderChange}
               isAnalyzing={isAnalyzing}
+              selectedModel={selectedModel}
+              onModelChange={handleModelChange}
             />
 
             {isAnalyzing && (!analyzedTokens.length || !useStream) && (
@@ -400,9 +417,10 @@ export default function Home() {
               <TranslationSection
                 japaneseText={currentSentence}
                 userApiKey={userApiKey}
-                userApiUrl={userApiUrl}
+                userApiUrl={getModelApiUrl(selectedModel)}
                 useStream={useStream}
                 trigger={translationTrigger}
+                selectedModel={selectedModel}
               />
             )}
           </main>

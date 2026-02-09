@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { translateText, streamTranslateText } from '../services/api';
+import { DEFAULT_MODEL, getModelName } from '../config/models';
 
 interface TranslationSectionProps {
   japaneseText: string;
@@ -9,6 +10,7 @@ interface TranslationSectionProps {
   userApiUrl?: string;
   useStream?: boolean;
   trigger?: number;
+  selectedModel?: string;
 }
 
 export default function TranslationSection({
@@ -16,7 +18,8 @@ export default function TranslationSection({
   userApiKey,
   userApiUrl,
   useStream = true, // 默认为true，保持向后兼容
-  trigger
+  trigger,
+  selectedModel = DEFAULT_MODEL
 }: TranslationSectionProps) {
   const [translation, setTranslation] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -49,11 +52,12 @@ export default function TranslationSection({
             setIsLoading(false);
           },
           userApiKey,
-          userApiUrl
+          userApiUrl,
+          getModelName(selectedModel)
         );
       } else {
         // 使用传统API进行翻译
-        const translatedText = await translateText(japaneseText, userApiKey, userApiUrl);
+        const translatedText = await translateText(japaneseText, userApiKey, userApiUrl, getModelName(selectedModel));
         setTranslation(translatedText);
         setIsLoading(false);
       }
